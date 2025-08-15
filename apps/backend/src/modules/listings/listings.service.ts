@@ -16,16 +16,33 @@ export class ListingsService {
 	}
 
 	async create(sellerId: string, dto: CreateListingDto) {
-		const tags = dto.tags?.length ? dto.tags : await this.enhanceTags(dto.description);
+		const tags = dto.tags?.length ? dto.tags.join(',') : (await this.enhanceTags(dto.description)).join(',');
+		const images = Array.isArray(dto.images) ? JSON.stringify(dto.images) : dto.images;
 		return this.prisma.listing.create({
-			data: { ...dto, tags, sellerId },
+			data: { ...dto, images, tags, sellerId },
 		});
 	}
 
 	async update(id: string, dto: Partial<CreateListingDto>) {
-		let tags = dto.tags;
-		if ((!tags || tags.length === 0) && dto.description) tags = await this.enhanceTags(dto.description);
-		return this.prisma.listing.update({ where: { id }, data: { ...dto, ...(tags ? { tags } : {}) } });
+		let tags = dto.tags ? dto.tags.join(',') : undefined;
+		if ((!dto.tags || dto.tags.length === 0) && dto.description) {
+			const enhancedTags = await this.enhanceTags(dto.description);
+			tags = enhancedTags.join(',');
+		}
+		const images = Array.isArray(dto.images) ? JSON.stringify(dto.images) : dto.images;
+		
+		// Create update data excluding the original arrays/objects
+		const updateData: any = {};
+		if (dto.title !== undefined) updateData.title = dto.title;
+		if (dto.description !== undefined) updateData.description = dto.description;
+		if (dto.price !== undefined) updateData.price = dto.price;
+		if (images !== undefined) updateData.images = images;
+		if (tags !== undefined) updateData.tags = tags;
+		
+		return this.prisma.listing.update({ 
+			where: { id }, 
+			data: updateData
+		});
 	}
 
 	remove(id: string) {
@@ -37,7 +54,7 @@ export class ListingsService {
 		try {
 			if (!token) return this.basicTagging(text);
 			const resp = await axios.post(
-				`https://api-inference.huggingface.co/models/${process.env.HF_MODEL || 'sshleifer/tiny-distilroberta-base'}',
+				`https://api-inference.huggingface.co/models/${process.env.HF_MODEL || 'sshleifer/tiny-distilroberta-base'}`,
 				{ inputs: text },
 				{ headers: { Authorization: `Bearer ${token}` } }
 			);

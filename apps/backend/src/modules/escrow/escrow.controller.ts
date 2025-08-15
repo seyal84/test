@@ -3,7 +3,7 @@ import { EscrowService } from './escrow.service.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { Roles } from '../../common/rbac.decorator.js';
-import { UserRole, EscrowStatus } from '@prisma/client';
+import { UserRole, EscrowStatus } from '../../common/constants.js';
 
 @Controller('escrow')
 @UseGuards(JwtAuthGuard, RolesGuard)
