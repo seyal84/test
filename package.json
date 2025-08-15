@@ -1,0 +1,21 @@
+{
+  "name": "homeflow",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/web",
+    "apps/mobile"
+  ],
+  "scripts": {
+    "postinstall": "npm -ws run postinstall || echo 'postinstall complete'",
+    "build": "npm -ws run build",
+    "dev": "npm -w apps/backend run dev & npm -w apps/web run dev",
+    "test": "npm -ws run test",
+    "lint": "npm -ws run lint || echo 'lint skipped'",
+    "format": "prettier -w ."
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}
