@@ -1,0 +1,51 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: homeflow-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: homeflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./apps/backend
+    container_name: homeflow-backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npm run prisma:deploy && npm run start:dev"
+
+  web:
+    build:
+      context: ./apps/web
+    container_name: homeflow-web
+    env_file:
+      - .env
+    environment:
+      VITE_API_BASE_URL: ${API_BASE_URL}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    command: sh -c "npm run dev -- --host 0.0.0.0"
+
+volumes:
+  pgdata:

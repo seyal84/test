@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  BUYER
+  SELLER
+  SERVICE_PROVIDER
+  ADMIN
+}
+
+enum OfferStatus {
+  PENDING
+  COUNTERED
+  ACCEPTED
+  DECLINED
+}
+
+enum EscrowStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  fullName      String
+  role          UserRole
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  listings      Listing[] @relation("SellerListings")
+  offers        Offer[]   @relation("BuyerOffers")
+  auditLogs     AuditLog[]
+  deletedAt     DateTime?
+}
+
+model Listing {
+  id            String        @id @default(cuid())
+  title         String
+  description   String
+  price         Int
+  images        Json
+  tags          String[]
+  sellerId      String
+  seller        User          @relation("SellerListings", fields: [sellerId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  offers        Offer[]
+}
+
+model Offer {
+  id            String        @id @default(cuid())
+  listingId     String
+  listing       Listing       @relation(fields: [listingId], references: [id])
+  buyerId       String
+  buyer         User          @relation("BuyerOffers", fields: [buyerId], references: [id])
+  amount        Int
+  status        OfferStatus   @default(PENDING)
+  negotiations  Negotiation[]
+  escrow        Escrow?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Negotiation {
+  id            String    @id @default(cuid())
+  offerId       String
+  offer         Offer     @relation(fields: [offerId], references: [id])
+  fromRole      UserRole
+  message       String
+  createdAt     DateTime  @default(now())
+}
+
+model Escrow {
+  id            String       @id @default(cuid())
+  offerId       String       @unique
+  offer         Offer        @relation(fields: [offerId], references: [id])
+  status        EscrowStatus @default(OPEN)
+  documents     Document[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  escrowId   String
+  escrow     Escrow   @relation(fields: [escrowId], references: [id])
+  s3Key      String
+  name       String
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+}

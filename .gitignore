@@ -1,0 +1,30 @@
+# Node
+node_modules/
+*.log
+
+# Builds
+/dist/
+/build/
+/.turbo/
+/.next/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Prisma
+/apps/backend/prisma/dev.db
+/apps/backend/prisma/dev.db-journal
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Coverage
+coverage/
+
+# Cypress
+/apps/web/cypress/screenshots/
+/apps/web/cypress/videos/
