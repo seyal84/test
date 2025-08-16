@@ -3,13 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 enum UserRole {
   BUYER
   SELLER
+  AGENT
   SERVICE_PROVIDER
   ADMIN
 }
@@ -19,11 +20,80 @@ enum OfferStatus {
   COUNTERED
   ACCEPTED
   DECLINED
+  EXPIRED
+  WITHDRAWN
 }
 
 enum EscrowStatus {
   OPEN
   IN_PROGRESS
+  PENDING_FUNDS
+  PENDING_DOCS
+  CLOSED
+  CANCELLED
+}
+
+enum DocumentType {
+  CONTRACT
+  INSPECTION_REPORT
+  DISCLOSURE
+  FINANCIAL
+  PROPERTY_PHOTOS
+  FLOOR_PLANS
+  MLS_SHEET
+  APPRAISAL
+  INSURANCE
+  OTHER
+}
+
+enum DocumentProcessingStatus {
+  UPLOADED
+  PROCESSING
+  PROCESSED
+  FAILED
+  REJECTED
+}
+
+enum PropertyType {
+  SINGLE_FAMILY
+  TOWNHOUSE
+  CONDO
+  MULTI_FAMILY
+  LAND
+  COMMERCIAL
+}
+
+enum PropertyStatus {
+  ACTIVE
+  PENDING
+  SOLD
+  OFF_MARKET
+  DRAFT
+}
+
+enum NotificationType {
+  OFFER_RECEIVED
+  OFFER_ACCEPTED
+  OFFER_DECLINED
+  OFFER_COUNTERED
+  DOCUMENT_UPLOADED
+  DOCUMENT_PROCESSED
+  MILESTONE_REACHED
+  PAYMENT_DUE
+  INSPECTION_SCHEDULED
+  CLOSING_REMINDER
+}
+
+enum TransactionMilestone {
+  OFFER_ACCEPTED
+  INSPECTION_SCHEDULED
+  INSPECTION_COMPLETED
+  APPRAISAL_ORDERED
+  APPRAISAL_COMPLETED
+  LOAN_APPROVAL
+  FINAL_WALKTHROUGH
+  CLOSING_SCHEDULED
+  FUNDS_WIRED
   CLOSED
 }
 
@@ -31,69 +101,333 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   fullName      String
+  phone         String?
   role          UserRole
+  avatar        String?
+  bio           String?
+  licenseNumber String?   // For agents
+  brokerage     String?   // For agents
+  preferences   Json?     // AI preferences and search criteria
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  listings      Listing[] @relation("SellerListings")
-  offers        Offer[]   @relation("BuyerOffers")
-  auditLogs     AuditLog[]
   deletedAt     DateTime?
+
+  // Relationships
+  listings               Listing[]                @relation("SellerListings")
+  agentListings          Listing[]                @relation("AgentListings")
+  offers                 Offer[]                  @relation("BuyerOffers")
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  searchHistory          SearchHistory[]
+  favoriteListings       FavoriteListing[]
+  messages               Message[]
+  transactionMilestones  TransactionMilestone[]   @relation("MilestoneUser")
+  assignedMilestones     TransactionMilestone[]   @relation("AssignedUser")
+
+  @@map("users")
 }
 
 model Listing {
-  id            String        @id @default(cuid())
-  title         String
-  description   String
-  price         Int
-  images        Json
-  tags          String[]
-  sellerId      String
-  seller        User          @relation("SellerListings", fields: [sellerId], references: [id])
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  offers        Offer[]
+  id               String         @id @default(cuid())
+  title            String
+  description      String
+  price            Int
+  propertyType     PropertyType
+  status           PropertyStatus @default(DRAFT)
+  
+  // Property details
+  bedrooms         Int?
+  bathrooms        Float?
+  squareFeet       Int?
+  lotSize          Float?
+  yearBuilt        Int?
+  stories          Int?
+  garage           Int?
+  pool             Boolean        @default(false)
+  
+  // Location
+  address          String
+  city             String
+  state            String
+  zipCode          String
+  country          String         @default("US")
+  latitude         Float?
+  longitude        Float?
+  neighborhood     String?
+  schoolDistrict   String?
+  
+  // Media and documents
+  images           Json           // Array of image URLs
+  virtualTourUrl   String?
+  floorPlanUrl     String?
+  videos           Json?          // Array of video URLs
+  
+  // Features and amenities
+  features         String[]       // Array of feature strings
+  appliances       String[]       // Array of included appliances
+  utilities        Json?          // Utility information
+  hoa              Json?          // HOA information
+  
+  // Metadata
+  mlsNumber        String?        @unique
+  tags             String[]
+  aiExtractedData  Json?          // Data extracted by AI from documents
+  marketAnalysis   Json?          // AI-generated market analysis
+  
+  // Relationships
+  sellerId         String
+  seller           User           @relation("SellerListings", fields: [sellerId], references: [id])
+  agentId          String?
+  agent            User?          @relation("AgentListings", fields: [agentId], references: [id])
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  // Related entities
+  offers           Offer[]
+  documents        Document[]
+  favorites        FavoriteListing[]
+  searchResults    SearchResult[]
+
+  @@map("listings")
+}
+
+model FavoriteListing {
+  id        String   @id @default(cuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, listingId])
+  @@map("favorite_listings")
 }
 
 model Offer {
-  id            String        @id @default(cuid())
-  listingId     String
-  listing       Listing       @relation(fields: [listingId], references: [id])
-  buyerId       String
-  buyer         User          @relation("BuyerOffers", fields: [buyerId], references: [id])
-  amount        Int
-  status        OfferStatus   @default(PENDING)
-  negotiations  Negotiation[]
-  escrow        Escrow?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                    String           @id @default(cuid())
+  listingId             String
+  listing               Listing          @relation(fields: [listingId], references: [id])
+  buyerId               String
+  buyer                 User             @relation("BuyerOffers", fields: [buyerId], references: [id])
+  
+  // Offer details
+  amount                Int
+  status                OfferStatus      @default(PENDING)
+  earnestMoney          Int?
+  downPayment           Int?
+  loanAmount            Int?
+  closingDate           DateTime?
+  inspectionPeriod      Int?             // Days
+  contingencies         Json?            // Array of contingencies
+  terms                 String?
+  expiration            DateTime?
+  
+  // AI analysis
+  aiRiskAssessment      Json?
+  aiRecommendations     Json?
+  marketComparison      Json?
+  
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  // Relationships
+  negotiations          Negotiation[]
+  counterOffers         CounterOffer[]
+  escrow                Escrow?
+  documents             Document[]
+
+  @@map("offers")
+}
+
+model CounterOffer {
+  id          String      @id @default(cuid())
+  offerId     String
+  offer       Offer       @relation(fields: [offerId], references: [id])
+  amount      Int
+  terms       String?
+  expiration  DateTime?
+  fromRole    UserRole    // Who made the counter offer
+  createdAt   DateTime    @default(now())
+
+  @@map("counter_offers")
 }
 
 model Negotiation {
-  id            String    @id @default(cuid())
-  offerId       String
-  offer         Offer     @relation(fields: [offerId], references: [id])
-  fromRole      UserRole
-  message       String
-  createdAt     DateTime  @default(now())
+  id         String   @id @default(cuid())
+  offerId    String
+  offer      Offer    @relation(fields: [offerId], references: [id])
+  fromRole   UserRole
+  message    String
+  amount     Int?     // If proposing a new amount
+  terms      String?  // If proposing new terms
+  createdAt  DateTime @default(now())
+
+  @@map("negotiations")
 }
 
 model Escrow {
-  id            String       @id @default(cuid())
-  offerId       String       @unique
-  offer         Offer        @relation(fields: [offerId], references: [id])
-  status        EscrowStatus @default(OPEN)
-  documents     Document[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id                 String                 @id @default(cuid())
+  offerId            String                 @unique
+  offer              Offer                  @relation(fields: [offerId], references: [id])
+  status             EscrowStatus           @default(OPEN)
+  escrowOfficer      String?
+  escrowCompany      String?
+  expectedClosing    DateTime?
+  actualClosing      DateTime?
+  aiTimelinePrediction Json?               // AI prediction of timeline
+  
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  // Relationships
+  documents          Document[]
+  milestones         TransactionMilestone[]
+  payments           Payment[]
+
+  @@map("escrows")
+}
+
+model TransactionMilestone {
+  id           String                        @id @default(cuid())
+  escrowId     String
+  escrow       Escrow                        @relation(fields: [escrowId], references: [id])
+  type         TransactionMilestone
+  title        String
+  description  String?
+  dueDate      DateTime?
+  completedAt  DateTime?
+  isCompleted  Boolean                       @default(false)
+  isRequired   Boolean                       @default(true)
+  assignedToId String?
+  assignedTo   User?                         @relation("AssignedUser", fields: [assignedToId], references: [id])
+  completedById String?
+  completedBy  User?                         @relation("MilestoneUser", fields: [completedById], references: [id])
+  documents    Document[]                    // Documents related to this milestone
+  
+  createdAt    DateTime                      @default(now())
+  updatedAt    DateTime                      @updatedAt
+
+  @@map("transaction_milestones")
 }
 
 model Document {
-  id         String   @id @default(cuid())
-  escrowId   String
-  escrow     Escrow   @relation(fields: [escrowId], references: [id])
-  s3Key      String
-  name       String
+  id                    String                    @id @default(cuid())
+  name                  String
+  originalName          String
+  s3Key                 String
+  s3Bucket              String
+  mimeType              String
+  size                  Int
+  type                  DocumentType
+  processingStatus      DocumentProcessingStatus  @default(UPLOADED)
+  
+  // AI extraction results
+  extractedData         Json?                     // Structured data extracted by AI
+  aiSummary             String?
+  aiCategory            String?
+  aiConfidenceScore     Float?
+  processingError       String?
+  ocrText               String?                   // Full OCR text
+  
+  // Relationships
+  escrowId              String?
+  escrow                Escrow?                   @relation(fields: [escrowId], references: [id])
+  listingId             String?
+  listing               Listing?                  @relation(fields: [listingId], references: [id])
+  offerId               String?
+  offer                 Offer?                    @relation(fields: [offerId], references: [id])
+  milestoneId           String?
+  milestone             TransactionMilestone?     @relation(fields: [milestoneId], references: [id])
+  
+  uploadedById          String?
+  uploadedBy            User?                     @relation(fields: [uploadedById], references: [id])
+  
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  @@map("documents")
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  escrowId    String
+  escrow      Escrow   @relation(fields: [escrowId], references: [id])
+  amount      Int
+  type        String   // "earnest_money", "down_payment", "closing_costs", etc.
+  status      String   // "pending", "completed", "failed"
+  stripeId    String?  // Stripe payment intent ID
+  description String?
+  dueDate     DateTime?
+  paidAt      DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("payments")
+}
+
+model SearchHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query        String
+  filters      Json     // Search filters applied
+  resultCount  Int
+  clickedListings Json? // Array of listing IDs clicked
+  
+  createdAt    DateTime @default(now())
+
+  @@map("search_history")
+}
+
+model SearchResult {
+  id         String  @id @default(cuid())
+  listingId  String
+  listing    Listing @relation(fields: [listingId], references: [id])
+  query      String
+  relevanceScore Float
+  aiMatchReason  String? // AI explanation of why this matches
+  
   createdAt  DateTime @default(now())
+
+  @@map("search_results")
+}
+
+model Notification {
+  id         String            @id @default(cuid())
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       NotificationType
+  title      String
+  message    String
+  data       Json?             // Additional notification data
+  isRead     Boolean           @default(false)
+  readAt     DateTime?
+  
+  createdAt  DateTime          @default(now())
+
+  @@map("notifications")
+}
+
+model Message {
+  id           String   @id @default(cuid())
+  fromUserId   String
+  fromUser     User     @relation(fields: [fromUserId], references: [id])
+  toUserId     String
+  content      String
+  isRead       Boolean  @default(false)
+  readAt       DateTime?
+  
+  // Context - what this message is about
+  listingId    String?
+  offerId      String?
+  escrowId     String?
+  
+  createdAt    DateTime @default(now())
+
+  @@map("messages")
 }
 
 model AuditLog {
@@ -101,7 +435,48 @@ model AuditLog {
   userId     String?
   user       User?    @relation(fields: [userId], references: [id])
   action     String
+  entity     String   // Table/entity affected
+  entityId   String   // ID of the affected entity
   details    Json?
   ip         String?
+  userAgent  String?
+  
   createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model AIProcessingJob {
+  id            String   @id @default(cuid())
+  type          String   // "document_analysis", "market_analysis", etc.
+  status        String   // "pending", "processing", "completed", "failed"
+  input         Json     // Input data for the job
+  output        Json?    // Results from AI processing
+  error         String?  // Error message if failed
+  processingTime Int?    // Processing time in milliseconds
+  
+  createdAt     DateTime @default(now())
+  completedAt   DateTime?
+
+  @@map("ai_processing_jobs")
+}
+
+// Add indexes for better performance
+model MarketData {
+  id            String   @id @default(cuid())
+  zipCode       String
+  city          String
+  state         String
+  medianPrice   Int
+  averagePrice  Int
+  pricePerSqFt  Float
+  daysOnMarket  Int
+  salesVolume   Int
+  priceChange   Float    // Percentage change from previous period
+  dataDate      DateTime // Date this data represents
+  
+  createdAt     DateTime @default(now())
+
+  @@unique([zipCode, dataDate])
+  @@map("market_data")
 }
