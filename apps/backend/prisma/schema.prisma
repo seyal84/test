@@ -7,31 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  BUYER
-  SELLER
-  SERVICE_PROVIDER
-  ADMIN
-}
-
-enum OfferStatus {
-  PENDING
-  COUNTERED
-  ACCEPTED
-  DECLINED
-}
-
-enum EscrowStatus {
-  OPEN
-  IN_PROGRESS
-  CLOSED
-}
-
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
   fullName      String
-  role          UserRole
+  role          String    // BUYER, SELLER, SERVICE_PROVIDER, ADMIN
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   listings      Listing[] @relation("SellerListings")
@@ -45,8 +25,8 @@ model Listing {
   title         String
   description   String
   price         Int
-  images        Json
-  tags          String[]
+  images        String        // JSON string for images
+  tags          String        // Comma-separated tags
   sellerId      String
   seller        User          @relation("SellerListings", fields: [sellerId], references: [id])
   createdAt     DateTime      @default(now())
@@ -61,7 +41,7 @@ model Offer {
   buyerId       String
   buyer         User          @relation("BuyerOffers", fields: [buyerId], references: [id])
   amount        Int
-  status        OfferStatus   @default(PENDING)
+  status        String        @default("PENDING") // PENDING, COUNTERED, ACCEPTED, DECLINED
   negotiations  Negotiation[]
   escrow        Escrow?
   createdAt     DateTime      @default(now())
@@ -72,7 +52,7 @@ model Negotiation {
   id            String    @id @default(cuid())
   offerId       String
   offer         Offer     @relation(fields: [offerId], references: [id])
-  fromRole      UserRole
+  fromRole      String    // BUYER, SELLER, SERVICE_PROVIDER, ADMIN
   message       String
   createdAt     DateTime  @default(now())
 }
@@ -81,7 +61,7 @@ model Escrow {
   id            String       @id @default(cuid())
   offerId       String       @unique
   offer         Offer        @relation(fields: [offerId], references: [id])
-  status        EscrowStatus @default(OPEN)
+  status        String       @default("OPEN") // OPEN, IN_PROGRESS, CLOSED
   documents     Document[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -101,7 +81,7 @@ model AuditLog {
   userId     String?
   user       User?    @relation(fields: [userId], references: [id])
   action     String
-  details    Json?
+  details    String?  // JSON string for details
   ip         String?
   createdAt  DateTime @default(now())
 }

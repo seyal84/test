@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service.js';
 import { CreateOfferDto } from './dto/create-offer.dto.js';
-import { EscrowStatus, OfferStatus, UserRole } from '@prisma/client';
+import { EscrowStatus, OfferStatus, UserRole } from '../../common/constants.js';
 
 @Injectable()
 export class OffersService {
